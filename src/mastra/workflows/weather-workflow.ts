@@ -1,184 +1,117 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 
-const forecastSchema = z.object({
-  date: z.string(),
-  maxTemp: z.number(),
-  minTemp: z.number(),
-  precipitationChance: z.number(),
-  condition: z.string(),
-  location: z.string(),
-});
-
-function getWeatherCondition(code: number): string {
-  const conditions: Record<number, string> = {
-    0: 'Clear sky',
-    1: 'Mainly clear',
-    2: 'Partly cloudy',
-    3: 'Overcast',
-    45: 'Foggy',
-    48: 'Depositing rime fog',
-    51: 'Light drizzle',
-    53: 'Moderate drizzle',
-    55: 'Dense drizzle',
-    61: 'Slight rain',
-    63: 'Moderate rain',
-    65: 'Heavy rain',
-    71: 'Slight snow fall',
-    73: 'Moderate snow fall',
-    75: 'Heavy snow fall',
-    95: 'Thunderstorm',
-  };
-  return conditions[code] || 'Unknown';
-}
-
-const fetchWeather = createStep({
-  id: 'fetch-weather',
-  description: 'Fetches weather forecast for a given city',
-  inputSchema: z.object({
-    city: z.string().describe('The city to get the weather for'),
-  }),
-  outputSchema: forecastSchema,
-  execute: async ({ inputData }) => {
-    if (!inputData) {
-      throw new Error('Input data not found');
-    }
-
-    const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(inputData.city)}&count=1`;
-    const geocodingResponse = await fetch(geocodingUrl);
-    const geocodingData = (await geocodingResponse.json()) as {
-      results: { latitude: number; longitude: number; name: string }[];
-    };
-
-    if (!geocodingData.results?.[0]) {
-      throw new Error(`Location '${inputData.city}' not found`);
-    }
-
-    const { latitude, longitude, name } = geocodingData.results[0];
-
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=precipitation,weathercode&timezone=auto,&hourly=precipitation_probability,temperature_2m`;
-    const response = await fetch(weatherUrl);
-    const data = (await response.json()) as {
-      current: {
-        time: string;
-        precipitation: number;
-        weathercode: number;
-      };
-      hourly: {
-        precipitation_probability: number[];
-        temperature_2m: number[];
-      };
-    };
-
-    const forecast = {
-      date: new Date().toISOString(),
-      maxTemp: Math.max(...data.hourly.temperature_2m),
-      minTemp: Math.min(...data.hourly.temperature_2m),
-      condition: getWeatherCondition(data.current.weathercode),
-      precipitationChance: data.hourly.precipitation_probability.reduce(
-        (acc, curr) => Math.max(acc, curr),
-        0,
-      ),
-      location: name,
-    };
-
-    return forecast;
-  },
-});
-
-const planActivities = createStep({
-  id: 'plan-activities',
-  description: 'Suggests activities based on weather conditions',
-  inputSchema: forecastSchema,
+/**
+ * STEP: Ingestion step
+ * Extracts text from PDF documents using pdfjs-dist
+ */
+const ingestDocuments = createStep({
+  id: 'ingest-documents',
+  description: 'Extracts text from Berkshire Hathaway PDF documents',
+  inputSchema: z.object({}),
   outputSchema: z.object({
-    activities: z.string(),
+    message: z.string(),
   }),
-  execute: async ({ inputData, mastra }) => {
-    const forecast = inputData;
+  execute: async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-    if (!forecast) {
-      throw new Error('Forecast data not found');
+    const { Client } = await import('pg');
+    const OpenAI = (await import('openai')).default;
+
+    const projectRoot = path.resolve(__dirname, '../../');
+    const docsPath = path.join(projectRoot, 'data', 'berkshire_letters');
+
+    if (!fs.existsSync(docsPath)) {
+      return { message: `Directory not found at ${docsPath}` };
     }
 
-    const agent = mastra?.getAgent('weatherAgent');
-    if (!agent) {
-      throw new Error('Weather agent not found');
+    // 🔹 DB connection
+    const db = new Client({
+      connectionString: process.env.DATABASE_URL,
+    });
+    await db.connect();
+
+    // 🔹 OpenAI client
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
+    const files = fs
+      .readdirSync(docsPath)
+      .filter((file: string) => file.toLowerCase().endsWith('.pdf'));
+
+    let allText = '';
+
+    // 1️⃣ Extract text
+    for (const file of files) {
+      const filePath = path.join(docsPath, file);
+      const data = new Uint8Array(fs.readFileSync(filePath));
+      const loadingTask = pdfjs.getDocument({ data });
+      const pdf = await loadingTask.promise;
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const content = await page.getTextContent();
+        const pageText = content.items.map((item: any) => item.str).join(' ');
+        allText += pageText + '\n';
+      }
     }
 
-    const prompt = `Based on the following weather forecast for ${forecast.location}, suggest appropriate activities:
-      ${JSON.stringify(forecast, null, 2)}
-      For each day in the forecast, structure your response exactly as follows:
+    // 2️⃣ Chunk text
+    const CHUNK_SIZE = 800;
+    const OVERLAP = 200;
+    const chunks: string[] = [];
 
-      📅 [Day, Month Date, Year]
-      ═══════════════════════════
-
-      🌡️ WEATHER SUMMARY
-      • Conditions: [brief description]
-      • Temperature: [X°C/Y°F to A°C/B°F]
-      • Precipitation: [X% chance]
-
-      🌅 MORNING ACTIVITIES
-      Outdoor:
-      • [Activity Name] - [Brief description including specific location/route]
-        Best timing: [specific time range]
-        Note: [relevant weather consideration]
-
-      🌞 AFTERNOON ACTIVITIES
-      Outdoor:
-      • [Activity Name] - [Brief description including specific location/route]
-        Best timing: [specific time range]
-        Note: [relevant weather consideration]
-
-      🏠 INDOOR ALTERNATIVES
-      • [Activity Name] - [Brief description including specific venue]
-        Ideal for: [weather condition that would trigger this alternative]
-
-      ⚠️ SPECIAL CONSIDERATIONS
-      • [Any relevant weather warnings, UV index, wind conditions, etc.]
-
-      Guidelines:
-      - Suggest 2-3 time-specific outdoor activities per day
-      - Include 1-2 indoor backup options
-      - For precipitation >50%, lead with indoor activities
-      - All activities must be specific to the location
-      - Include specific venues, trails, or locations
-      - Consider activity intensity based on temperature
-      - Keep descriptions concise but informative
-
-      Maintain this exact formatting for consistency, using the emoji and section headers as shown.`;
-
-    const response = await agent.stream([
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ]);
-
-    let activitiesText = '';
-
-    for await (const chunk of response.textStream) {
-      process.stdout.write(chunk);
-      activitiesText += chunk;
+    let start = 0;
+    while (start < allText.length) {
+      const end = start + CHUNK_SIZE;
+      chunks.push(allText.slice(start, end));
+      start += CHUNK_SIZE - OVERLAP;
     }
+
+    // 3️⃣ Generate embeddings & store
+    let inserted = 0;
+
+    for (const chunk of chunks) {
+      if (!chunk.trim()) continue;
+
+      const embeddingResponse = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: chunk,
+      });
+
+      const embedding = embeddingResponse.data[0].embedding;
+
+      await db.query(
+        'INSERT INTO document_chunks (content, embedding) VALUES ($1, $2)',
+        [chunk, embedding]
+      );
+
+      inserted++;
+    }
+
+    await db.end();
 
     return {
-      activities: activitiesText,
+      message: `Stored ${inserted} embedded chunks in PostgreSQL`,
     };
   },
 });
 
-const weatherWorkflow = createWorkflow({
-  id: 'weather-workflow',
-  inputSchema: z.object({
-    city: z.string().describe('The city to get the weather for'),
-  }),
+/**
+ * WORKFLOW: Ingestion workflow
+ */
+const ingestionWorkflow = createWorkflow({
+  id: 'ingestion-workflow',
+  inputSchema: z.object({}),
   outputSchema: z.object({
-    activities: z.string(),
+    message: z.string(),
   }),
 })
-  .then(fetchWeather)
-  .then(planActivities);
+  .then(ingestDocuments);
 
-weatherWorkflow.commit();
+ingestionWorkflow.commit();
 
-export { weatherWorkflow };
+export { ingestionWorkflow };

@@ -22,6 +22,10 @@
     "@mastra/libsql": "^0.16.4",
     "@mastra/loggers": "^0.10.19",
     "@mastra/memory": "^0.15.13",
+    "openai": "^6.13.0",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.4.449",
+    "pg": "^8.16.3",
     "zod": "^4.2.0"
   },
   "devDependencies": {
