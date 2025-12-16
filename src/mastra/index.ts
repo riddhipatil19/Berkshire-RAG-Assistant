@@ -12,10 +12,13 @@ export const mastra = new Mastra({
     retrievalWorkflow,
     ragWorkflow,
   },
+
   agents: {},
+
   storage: new LibSQLStore({
     url: ':memory:',
   }),
+
   logger: new PinoLogger({
     name: 'Mastra',
     level: 'info',
