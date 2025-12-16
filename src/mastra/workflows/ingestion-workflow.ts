@@ -16,9 +16,7 @@ const ingestDocuments = createStep({
     const fs = await import('fs');
     const path = await import('path');
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
     const { Client } = await import('pg');
-    const OpenAI = (await import('openai')).default;
 
     const projectRoot = path.resolve(__dirname, '../../');
     const docsPath = path.join(projectRoot, 'data', 'berkshire_letters');
@@ -27,16 +25,11 @@ const ingestDocuments = createStep({
       return { message: `Directory not found at ${docsPath}` };
     }
 
-    // 🔹 DB connection
+    // DB connection
     const db = new Client({
       connectionString: process.env.DATABASE_URL,
     });
     await db.connect();
-
-    // 🔹 OpenAI client
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
 
     const files = fs
       .readdirSync(docsPath)
@@ -66,27 +59,19 @@ const ingestDocuments = createStep({
 
     let start = 0;
     while (start < allText.length) {
-      const end = start + CHUNK_SIZE;
-      chunks.push(allText.slice(start, end));
+      chunks.push(allText.slice(start, start + CHUNK_SIZE));
       start += CHUNK_SIZE - OVERLAP;
     }
 
-    // 3️⃣ Generate embeddings & store
+    // 3️⃣ Store chunks WITHOUT embeddings
     let inserted = 0;
 
     for (const chunk of chunks) {
       if (!chunk.trim()) continue;
 
-      const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: chunk,
-      });
-
-      const embedding = embeddingResponse.data[0].embedding;
-
       await db.query(
-        'INSERT INTO document_chunks (content, embedding) VALUES ($1, $2)',
-        [chunk, embedding]
+        'INSERT INTO document_chunks (content, embedding) VALUES ($1, NULL)',
+        [chunk]
       );
 
       inserted++;
@@ -95,7 +80,7 @@ const ingestDocuments = createStep({
     await db.end();
 
     return {
-      message: `Stored ${inserted} embedded chunks in PostgreSQL`,
+      message: `Stored ${inserted} chunks (embeddings pending)`,
     };
   },
 });
