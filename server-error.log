@@ -1,0 +1,31 @@
+2025-12-16T21:10:35.375Z - Cannot read properties of undefined (reading 'addEventListener')
+TypeError: Cannot read properties of undefined (reading 'addEventListener')
+    at Workflow.execute (C:\Users\riddh\berkshire-rag-assistant\node_modules\@mastra\core\dist\chunk-Y2BH2LUD.js:316:897)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async <anonymous> (C:\Users\riddh\berkshire-rag-assistant\src\server.ts:22:24)
+
+2025-12-16T21:12:28.546Z - createRun() has been deprecated. Please use createRunAsync() instead.
+
+Migration guide:
+  Before: const run = workflow.createRun();
+  After:  const run = await workflow.createRunAsync();
+
+Note: createRunAsync() is an async method, so make sure your calling function is async.
+Error: createRun() has been deprecated. Please use createRunAsync() instead.
+
+Migration guide:
+  Before: const run = workflow.createRun();
+  After:  const run = await workflow.createRunAsync();
+
+Note: createRunAsync() is an async method, so make sure your calling function is async.
+    at Workflow.createRun (C:\Users\riddh\berkshire-rag-assistant\node_modules\@mastra\core\dist\chunk-Y2BH2LUD.js:306:32)
+    at <anonymous> (C:\Users\riddh\berkshire-rag-assistant\src\server.ts:22:33)
+    at Layer.handleRequest (C:\Users\riddh\berkshire-rag-assistant\node_modules\router\lib\layer.js:152:17)
+    at next (C:\Users\riddh\berkshire-rag-assistant\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (C:\Users\riddh\berkshire-rag-assistant\node_modules\router\lib\route.js:117:3)
+    at handle (C:\Users\riddh\berkshire-rag-assistant\node_modules\router\index.js:435:11)
+    at Layer.handleRequest (C:\Users\riddh\berkshire-rag-assistant\node_modules\router\lib\layer.js:152:17)
+    at C:\Users\riddh\berkshire-rag-assistant\node_modules\router\index.js:295:15
+    at processParams (C:\Users\riddh\berkshire-rag-assistant\node_modules\router\index.js:582:12)
+    at next (C:\Users\riddh\berkshire-rag-assistant\node_modules\router\index.js:291:5)
+
