@@ -4,7 +4,7 @@ A Retrieval-Augmented Generation (RAG) system for answering questions using Berk
 
 ## Overview
 
-This project implements a RAG system that processes PDF documents of Berkshire Hathaway shareholder letters, stores text embeddings in a vector database, and retrieves relevant context to answer user queries. When an OpenAI API key is provided, the system generates synthesized answers using a language model. Without an API key, it returns only the retrieved document context.
+This project implements a RAG system that processes PDF documents of Berkshire Hathaway shareholder letters, stores text embeddings in a vector database, and retrieves relevant context to answer user queries. When an OpenAI API key is provided, the system generates synthesized answers using a language model.
 
 ## Features
 
@@ -12,7 +12,7 @@ This project implements a RAG system that processes PDF documents of Berkshire H
 - Text chunking and embedding generation
 - Vector storage using PostgreSQL with pgvector
 - Semantic retrieval of relevant document passages
-- Conditional answer generation based on API key availability
+- Answer generation using language model
 - Chat-style user interface
 - Local chat history storage in browser
 
@@ -78,7 +78,7 @@ berkshire/
 5. Create a `.env` file in `berkshire-rag-assistant` with:
    ```
    DATABASE_URL=postgresql://username:password@localhost:5432/database_name
-   OPENAI_API_KEY=your_api_key_here  # Optional
+   OPENAI_API_KEY=your_api_key_here
    ```
 
 6. Place Berkshire Hathaway letter PDFs in `berkshire-rag-assistant/data/berkshire_letters/`.
@@ -95,14 +95,13 @@ Mastra provides a Studio UI for testing workflows:
    npm run dev
    ```
 
-2. Open Mastra Studio (typically at http://localhost:4000 or similar - check console output).
+2. Open Mastra Studio 
 
 3. Use the Studio interface to test workflows and API endpoints.
 
 ## API Key Behavior
 
 - **With OpenAI API Key**: The system generates synthesized answers using the language model, combining retrieved context with AI reasoning.
-- **Without API Key**: The system returns only the raw retrieved document passages without generating a synthesized answer.
 
 API keys can be added or removed without code changes by updating the environment variables.
 
