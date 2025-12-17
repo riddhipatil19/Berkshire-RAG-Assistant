@@ -10,8 +10,6 @@ import { Loader2, MessageSquarePlus, Trash2 } from "lucide-react"
 
 interface RagResponse {
   answer: string
-  context: string[]
-  llmUsed: boolean
 }
 
 type ChatRole = "user" | "assistant"
@@ -20,8 +18,6 @@ interface ChatMessage {
   id: string
   role: ChatRole
   content: string
-  context?: string[]
-  llmUsed?: boolean
 }
 
 interface Chat {
@@ -192,20 +188,21 @@ export default function RagPage() {
       const data = await res.json()
 
       // Backend returns: { status, steps, input, result }
-      const ragResult = data.result ?? data
+      const ragResult = data.result
 
-      if (!ragResult || typeof ragResult.answer !== "string" || !Array.isArray(ragResult.context)) {
+      if (!ragResult || typeof ragResult.answer !== "string") {
         throw new Error("Unexpected response format from backend")
       }
 
-      const result = ragResult as RagResponse
+      const result: RagResponse = {
+        answer: ragResult.answer,
+      }
+
 
       const assistantMessage: ChatMessage = {
         id: `${Date.now()}-assistant`,
         role: "assistant",
         content: result.answer,
-        context: result.context,
-        llmUsed: result.llmUsed,
       }
 
       // Add assistant message to the active chat
@@ -351,34 +348,6 @@ export default function RagPage() {
                       }`}
                     >
                       <p className="leading-relaxed">{msg.content}</p>
-
-                      {!isUser && msg.context && msg.context.length > 0 && (
-                        <div className="pt-2">
-                          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Retrieved Context ({msg.context.length})
-                          </p>
-                          <Accordion type="single" collapsible className="w-full">
-                            {msg.context.map((chunk, index) => (
-                              <AccordionItem key={index} value={`item-${msg.id}-${index}`}>
-                                <AccordionTrigger className="text-xs">
-                                  Context Chunk {index + 1}
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                  <div className="rounded-md bg-background/60 p-3 text-xs leading-relaxed">
-                                    {chunk}
-                                  </div>
-                                </AccordionContent>
-                              </AccordionItem>
-                            ))}
-                          </Accordion>
-                        </div>
-                      )}
-
-                      {!isUser && msg.llmUsed === false && (
-                        <p className="pt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-                          LLM is disabled – showing retrieved context only.
-                        </p>
-                      )}
                     </div>
                   </div>
                 )

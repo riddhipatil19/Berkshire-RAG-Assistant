@@ -4,7 +4,9 @@ import { retrieveChunks } from '../services/retriever';
 
 /**
  * STEP: RAG Answering
- * Uses LLM only if API key exists
+ * - Retrieval is always performed
+ * - LLM is used only if API key exists
+ * - ONLY final answer is returned to caller
  */
 const ragStep = createStep({
   id: 'rag-answer',
@@ -14,33 +16,29 @@ const ragStep = createStep({
   }),
   outputSchema: z.object({
     answer: z.string(),
-    context: z.array(z.string()),
-    llmUsed: z.boolean(),
   }),
   execute: async ({ inputData }) => {
     const { question } = inputData;
 
-    // 1️⃣ Retrieve context
+    // 1️⃣ Retrieve context (internal only)
     const chunks = await retrieveChunks(question, 5);
 
-    // 2️⃣ If no API key → return context only
+    // 2️⃣ If no API key → safe fallback answer
     if (!process.env.OPENAI_API_KEY) {
       return {
         answer:
-          'LLM is disabled. Showing retrieved context only. Add API key to enable answers.',
-        context: chunks,
-        llmUsed: false,
+          "I'm unable to generate a synthesized answer because the language model is currently disabled. Please configure the API key to enable full answers.",
       };
     }
 
-    // 3️⃣ LLM answering (will activate automatically later)
+    // 3️⃣ LLM answering (activates automatically when key is present)
     const OpenAI = (await import('openai')).default;
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
 
     const prompt = `
-You are a financial assistant answering questions using the provided context.
+You are a financial assistant answering questions strictly using the provided context.
 
 Context:
 ${chunks.join('\n\n')}
@@ -48,7 +46,9 @@ ${chunks.join('\n\n')}
 Question:
 ${question}
 
-Answer clearly and concisely. If the answer is not in the context, say so.
+Instructions:
+- Answer clearly and concisely
+- If the answer is not present in the context, say so
 `;
 
     const response = await openai.chat.completions.create({
@@ -58,8 +58,6 @@ Answer clearly and concisely. If the answer is not in the context, say so.
 
     return {
       answer: response.choices[0].message.content || '',
-      context: chunks,
-      llmUsed: true,
     };
   },
 });
@@ -74,11 +72,8 @@ const ragWorkflow = createWorkflow({
   }),
   outputSchema: z.object({
     answer: z.string(),
-    context: z.array(z.string()),
-    llmUsed: z.boolean(),
   }),
-})
-  .then(ragStep);
+}).then(ragStep);
 
 ragWorkflow.commit();
 
